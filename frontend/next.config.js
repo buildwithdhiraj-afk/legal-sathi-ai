@@ -2,25 +2,9 @@
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
-  async headers() {
-    return [
-      {
-        source: "/:path*",
-        headers: [
-          { key: "Access-Control-Allow-Origin", value: "*" },
-        ],
-      },
-    ];
-  },
-  async rewrites() {
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
-    return [
-      {
-        source: "/api/:path*",
-        destination: `${backendUrl}/api/:path*`,
-      },
-    ];
-  },
+  output: 'export',
+  images: { unoptimized: true },
+  basePath: process.env.NODE_ENV === 'production' ? '/legal-sathi-ai' : '',
 }
 
 module.exports = nextConfig
