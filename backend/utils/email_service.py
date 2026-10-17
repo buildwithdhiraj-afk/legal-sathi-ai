@@ -3,12 +3,14 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Optional
+from config.settings import settings
 
-SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USER = os.getenv("SMTP_USER", "")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-EMAIL_FROM = os.getenv("EMAIL_FROM", "noreply@legalsathi.ai")
+SMTP_HOST = settings.SMTP_HOST
+SMTP_PORT = settings.SMTP_PORT
+SMTP_USER = settings.SMTP_USER
+SMTP_PASSWORD = settings.SMTP_PASSWORD
+EMAIL_FROM = settings.EMAIL_FROM
+FRONTEND_URL = settings.FRONTEND_URL
 
 # Outbound email log directory when SMTP credentials are not configured
 LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sent_emails")
@@ -47,7 +49,7 @@ def send_email_html(to_email: str, subject: str, html_body: str) -> bool:
 
 
 def send_verification_email(to_email: str, first_name: str, verify_token: str):
-    verify_url = f"http://localhost:3000/account/verify?token={verify_token}"
+    verify_url = f"{FRONTEND_URL}/account/verify?token={verify_token}"
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -72,7 +74,7 @@ def send_verification_email(to_email: str, first_name: str, verify_token: str):
 
 
 def send_password_reset_email(to_email: str, reset_token: str):
-    reset_url = f"http://localhost:3000/reset-password?token={reset_token}"
+    reset_url = f"{FRONTEND_URL}/reset-password?token={reset_token}"
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -95,7 +97,7 @@ def send_password_reset_email(to_email: str, reset_token: str):
 
 
 def send_welcome_email(to_email: str, first_name: str):
-    start_url = "http://localhost:3000/dashboard"
+    start_url = f"{FRONTEND_URL}/dashboard"
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -133,7 +135,7 @@ def send_document_generated_email(to_email: str, doc_type: str):
         <p>Your legal document draft (<strong>{doc_type}</strong>) has been successfully generated.</p>
         <p>You can access, edit, and download it anytime from your LegalSathi Dashboard.</p>
         <div style="text-align: center; margin: 25px 0;">
-          <a href="http://localhost:3000/documents" style="background-color: #2563eb; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 10px; font-weight: bold; display: inline-block;">View My Documents</a>
+          <a href="{FRONTEND_URL}/documents" style="background-color: #2563eb; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 10px; font-weight: bold; display: inline-block;">View My Documents</a>
         </div>
       </div>
     </body>

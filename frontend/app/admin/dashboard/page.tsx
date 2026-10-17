@@ -72,10 +72,11 @@ export default function AdminDashboardPage() {
   const fetchData = async (authToken: string) => {
     setLoading(true);
     try {
+      const authHeaders = { Authorization: `Bearer ${authToken}` };
       const [resStats, resUsers, resSettings] = await Promise.all([
-        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/admin/stats?token=${encodeURIComponent(authToken)}`),
-        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/admin/users?token=${encodeURIComponent(authToken)}`),
-        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/admin/settings?token=${encodeURIComponent(authToken)}`),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/admin/stats`, { headers: authHeaders }),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/admin/users`, { headers: authHeaders }),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/admin/settings`, { headers: authHeaders }),
       ]);
 
       if (resStats.ok) setStats(await resStats.json());
@@ -89,10 +90,10 @@ export default function AdminDashboardPage() {
     if (!token) return;
     try {
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/admin/users/action?token=${encodeURIComponent(token)}`,
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/admin/users/action`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ user_id: userId, action }),
         }
       );
@@ -107,10 +108,10 @@ export default function AdminDashboardPage() {
     if (!token) return;
     try {
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/admin/settings?token=${encodeURIComponent(token)}`,
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/admin/settings`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ key, value }),
         }
       );
@@ -201,7 +202,7 @@ export default function AdminDashboardPage() {
             <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 space-y-1">
               <p className="text-xs font-semibold text-slate-400">Total Conversations</p>
               <p className="text-3xl font-extrabold text-emerald-400">{stats.chats_today}</p>
-              <p className="text-[10px] text-slate-500">AI Response Avg: {stats.average_response_time}</p>
+              <p className="text-[10px] text-slate-500">Domain breakdown in analytics below</p>
             </div>
 
             <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 space-y-1">

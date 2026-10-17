@@ -17,6 +17,7 @@ import {
   Volume2,
 } from 'lucide-react';
 import Markdown from './markdown';
+import LegalSourceChips, { SourceReference } from './LegalSourceChips';
 
 export type LegalResponse = {
   summary: string;
@@ -28,6 +29,7 @@ export type LegalResponse = {
   government_website: string;
   disclaimer: string;
   confidence_score: number;
+  source_references?: SourceReference[];
 };
 
 type SectionProps = {
@@ -164,6 +166,8 @@ export default function LegalResponseCard({ response }: { response: LegalRespons
           <Markdown content={response.applicable_law} />
         </Section>
       )}
+
+      <LegalSourceChips sources={response.source_references || []} />
 
       {response.explanation && (
         <Section icon={<BookOpen size={17} />} title="Explanation">

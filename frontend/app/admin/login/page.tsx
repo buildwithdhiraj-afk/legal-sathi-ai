@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Loader2, Lock, Mail, ShieldAlert } from 'lucide-react';
+import { apiUrl } from '@/lib/api';
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -20,14 +21,11 @@ export default function AdminLoginPage() {
     setLoading(true);
 
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/auth/admin/login`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Bypass-Tunnel-Remainder': 'true' },
-          body: JSON.stringify({ admin_email: adminEmail, password }),
-        }
-      );
+      const res = await fetch(apiUrl('/api/auth/admin/login'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ admin_email: adminEmail, password }),
+      });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Admin authentication failed');
@@ -107,10 +105,6 @@ export default function AdminLoginPage() {
             Authenticate Administrator
           </button>
         </form>
-
-        <div className="text-center text-[11px] text-slate-600 border-t border-slate-800/80 pt-3">
-          Need initial admin credentials? Default username is <strong>admin@legalsathi.ai</strong>
-        </div>
       </div>
     </div>
   );

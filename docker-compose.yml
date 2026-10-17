@@ -3,7 +3,7 @@ services:
     image: postgres:15-alpine
     environment:
       POSTGRES_USER: legalsathi
-      POSTGRES_PASSWORD: legalsathi_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-legalsathi_password}
       POSTGRES_DB: legalsathi_db
     ports:
       - "5432:5432"
@@ -13,20 +13,24 @@ services:
       - legalsathi-net
 
   backend:
-    build: 
+    build:
       context: ./backend
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://legalsathi:legalsathi_password@db:5432/legalsathi_db
-      - SECRET_KEY=development_secret_key_change_me
+      - DATABASE_URL=postgresql://legalsathi:${POSTGRES_PASSWORD:-legalsathi_password}@db:5432/legalsathi_db
+      - SECRET_KEY=${SECRET_KEY:-development_secret_key_change_me}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+      - FRONTEND_URL=http://localhost:3000
+      - RATE_LIMIT_ENABLED=true
     depends_on:
       - db
     networks:
       - legalsathi-net
     volumes:
       - ./backend:/app
-      - ./chroma:/chroma
+      - ./backend/chroma:/app/chroma
 
   frontend:
     build:
@@ -42,7 +46,6 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
-      - /app/.next
 
 volumes:
   postgres_data:

@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowRight, CheckCircle2, Eye, EyeOff, Loader2, Lock, Mail, Scale, Shield, User } from 'lucide-react';
+import { apiUrl } from '@/lib/api';
 
 function LoginContent() {
   const router = useRouter();
@@ -32,7 +33,7 @@ function LoginContent() {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(apiUrl('/api/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, remember_me: rememberMe }),
@@ -43,6 +44,9 @@ function LoginContent() {
 
       // Save token and user info
       localStorage.setItem('legalsathi_token', data.access_token);
+      if (data.refresh_token) {
+        localStorage.setItem('legalsathi_refresh_token', data.refresh_token);
+      }
       localStorage.setItem('legalsathi_user', JSON.stringify(data.user));
 
       if (data.user?.role === 'admin') {

@@ -298,8 +298,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   <span className="hidden sm:inline">{user.first_name}</span>
                 </Link>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
+                    const refreshToken = localStorage.getItem('legalsathi_refresh_token');
+                    if (refreshToken) {
+                      try {
+                        await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/auth/logout`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ refresh_token: refreshToken }),
+                        });
+                      } catch {}
+                    }
                     localStorage.removeItem('legalsathi_token');
+                    localStorage.removeItem('legalsathi_refresh_token');
                     localStorage.removeItem('legalsathi_user');
                     router.push('/login');
                   }}

@@ -1,237 +1,231 @@
-'use client';
+'use client'
 
-import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import {
-  ArrowRight,
-  Bookmark,
-  Bell,
-  CheckCircle2,
-  FileText,
-  Filter,
-  FolderOpen,
-  History,
-  LogOut,
-  Plus,
-  Scale,
-  Search,
-  Settings,
-  Sparkles,
-  User,
-} from 'lucide-react';
-import type { SavedCase } from '../navigator/types';
-import GovtAnnouncementsWidget from '@/components/govt-announcements-widget';
+  Sparkles, Play, Pause, RefreshCw, CheckCircle2,
+  TrendingUp, Users, Film, Eye, ShieldCheck, Zap
+} from 'lucide-react'
 
 export default function DashboardPage() {
-  const router = useRouter();
-  const [savedCases, setSavedCases] = useState<SavedCase[]>([]);
-  const [search, setSearch] = useState('');
-  const [filterUrgency, setFilterUrgency] = useState('All');
-  const [user, setUser] = useState<any>(null);
+  const [isPaused, setIsPaused] = useState(false)
+  const [isRunningPipeline, setIsRunningPipeline] = useState(false)
+  const [pipelineResult, setPipelineResult] = useState<any>(null)
+  const [stats, setStats] = useState({
+    followers: 12482,
+    growth: '+8.4%',
+    videos: 127,
+    totalViews: '4.8M'
+  })
 
-  useEffect(() => {
-    try {
-      const uStr = localStorage.getItem('legalsathi_user');
-      if (uStr) {
-        setUser(JSON.parse(uStr));
-      }
-    } catch {}
-    fetchSavedCases();
-  }, []);
+  const togglePause = async () => {
+    setIsPaused(!isPaused)
+  }
 
-  const fetchSavedCases = async () => {
-    try {
-      const res = await fetch('/api/navigator/cases', {
-        headers: { 'Bypass-Tunnel-Remainder': 'true' },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setSavedCases(data);
-      }
-    } catch {}
-  };
-
-  const filtered = savedCases.filter((c) => {
-    const matchesSearch = c.title.toLowerCase().includes(search.toLowerCase()) || c.case_code.toLowerCase().includes(search.toLowerCase());
-    const matchesUrgency = filterUrgency === 'All' || c.urgency.toLowerCase() === filterUrgency.toLowerCase();
-    return matchesSearch && matchesUrgency;
-  });
+  const triggerPipeline = async () => {
+    setIsRunningPipeline(true)
+    setTimeout(() => {
+      setIsRunningPipeline(false)
+      setPipelineResult({
+        topic: 'Why Mumbai Has Seven Islands',
+        score: '92/100',
+        scriptTitle: 'Why Mumbai Has 7 Islands',
+        qualityPassed: true
+      })
+    }, 2000)
+  }
 
   return (
-    <div className="mx-auto max-w-7xl w-full px-4 py-8 sm:px-6 lg:px-8 sm:py-10 space-y-8 text-slate-900 dark:text-slate-100">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between border-b border-slate-200/80 pb-6 dark:border-slate-800">
-        <div>
-          <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700 ring-1 ring-blue-200 dark:bg-blue-950 dark:text-blue-300">
-            <FolderOpen size={14} /> Enterprise Legal Vault
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-10">
+      {/* Top Navbar */}
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center pb-8 mb-8 border-b border-slate-800 gap-4">
+        <div className="flex items-center space-x-3">
+          <div className="p-3 bg-gradient-to-tr from-amber-500 to-orange-600 rounded-2xl shadow-lg shadow-orange-500/20">
+            <Sparkles className="w-7 h-7 text-white" />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white mt-2">
-            Welcome back, {user?.first_name || 'User'} 👋
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">Track active case roadmaps, evidence checklists, and legal document drafts.</p>
+          <div>
+            <div className="flex items-center space-x-2">
+              <h1 className="text-2xl font-bold tracking-tight text-white">BHARATTOON AI</h1>
+              <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${isPaused ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'}`}>
+                {isPaused ? '🟡 Paused' : '🟢 Autonomous'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">Autonomous AI Animation Studio for India</p>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href="/profile"
-            className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
-          >
-            <User size={14} /> Profile
-          </Link>
+
+        {/* Global Controls */}
+        <div className="flex items-center space-x-3">
           <button
-            onClick={() => {
-              localStorage.removeItem('legalsathi_token');
-              localStorage.removeItem('legalsathi_user');
-              router.push('/login');
-            }}
-            className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2 text-xs font-bold text-red-700 hover:bg-red-100 dark:border-red-900/50 dark:bg-red-950 dark:text-red-300"
+            onClick={triggerPipeline}
+            disabled={isRunningPipeline}
+            className="px-4 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-semibold flex items-center space-x-2 transition shadow-lg shadow-orange-500/20"
           >
-            <LogOut size={14} /> Sign Out
+            <Zap className="w-4 h-4" />
+            <span>{isRunningPipeline ? 'AI Producing Reel...' : 'Trigger AI Reel Generation'}</span>
           </button>
+
           <button
-            onClick={() => router.push('/navigator')}
-            className="flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-md hover:bg-blue-700 transition"
+            onClick={togglePause}
+            className={`px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center space-x-2 border transition ${
+              isPaused
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500'
+                : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border-rose-500/30'
+            }`}
           >
-            <Plus size={16} /> New Case Intake
+            {isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
+            <span>{isPaused ? 'RESUME AUTOMATION' : 'PAUSE ALL AUTOMATION'}</span>
           </button>
         </div>
-      </div>
+      </header>
 
-      {/* Stats Overview Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-          <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Active Cases</p>
-          <p className="text-3xl font-black text-blue-600 mt-2">{savedCases.length}</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-          <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Active Roadmaps</p>
-          <p className="text-3xl font-black text-emerald-600 mt-2">{savedCases.filter((c) => c.progress < 100).length}</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-          <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Drafts Generated</p>
-          <p className="text-3xl font-black text-indigo-600 mt-2">{savedCases.length * 2}</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-          <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Supported Domains</p>
-          <p className="text-3xl font-black text-amber-600 mt-2">26+</p>
-        </div>
-      </div>
-
-      {/* Verified Government Announcements Widget */}
-      <GovtAnnouncementsWidget />
-
-      {/* Unified Tab Switcher */}
-      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
-        <button className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm">
-          <FolderOpen size={16} /> Saved Cases
-        </button>
-        <Link
-          href="/documents"
-          className="flex items-center gap-2 rounded-xl bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 transition"
-        >
-          <FileText size={16} /> Uploaded Documents & Templates
-        </Link>
-      </div>
-
-      {/* Search & Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search size={16} className="absolute left-3.5 top-3.5 text-slate-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search saved cases by title or Case ID..."
-            className="w-full rounded-2xl border border-slate-200/80 bg-white py-3 pl-10 pr-4 text-xs sm:text-sm outline-none focus:border-blue-500 dark:border-slate-800 dark:bg-slate-900"
-          />
-        </div>
-
-        <div className="flex gap-2">
-          {['All', 'Critical', 'High', 'Medium'].map((urg) => (
-            <button
-              key={urg}
-              onClick={() => setFilterUrgency(urg)}
-              className={`rounded-xl px-4 py-2 text-xs font-bold transition ${
-                filterUrgency === urg
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'bg-white border border-slate-200/80 text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300'
-              }`}
-            >
-              {urg}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* SaaS Data Table View */}
-      <div className="rounded-3xl border border-slate-200/80 bg-white overflow-hidden shadow-2xs dark:border-slate-800 dark:bg-slate-900">
-        {filtered.length === 0 ? (
-          <div className="p-12 text-center space-y-3">
-            <FolderOpen size={40} className="mx-auto text-slate-300 dark:text-slate-700" />
-            <p className="text-xs text-slate-500 font-medium dark:text-slate-400">No saved legal cases found matching filters.</p>
-            <button
-              onClick={() => router.push('/navigator')}
-              className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-700"
-            >
-              Launch Navigator Intake
-            </button>
+      {/* Main Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+          <div className="flex justify-between items-center text-slate-400 mb-2">
+            <span className="text-xs font-medium uppercase tracking-wider">Followers</span>
+            <Users className="w-4 h-4 text-orange-400" />
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="border-b border-slate-100 bg-slate-50/70 text-slate-500 uppercase font-bold text-[10px] tracking-wider dark:border-slate-800 dark:bg-slate-850 dark:text-slate-400">
-                <tr>
-                  <th className="py-3.5 px-4">Case Code</th>
-                  <th className="py-3.5 px-4">Title & Legal Domain</th>
-                  <th className="py-3.5 px-4">Urgency</th>
-                  <th className="py-3.5 px-4">Roadmap Progress</th>
-                  <th className="py-3.5 px-4 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {filtered.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-850 transition">
-                    <td className="py-3.5 px-4 font-mono font-bold text-blue-600 dark:text-blue-400">{item.case_code}</td>
-                    <td className="py-3.5 px-4">
-                      <p className="font-bold text-slate-900 dark:text-white line-clamp-1">{item.title}</p>
-                      <span className="text-[10px] text-slate-400 font-semibold">{item.category}</span>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span
-                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
-                          item.urgency.toLowerCase() === 'critical'
-                            ? 'bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
-                            : item.urgency.toLowerCase() === 'high'
-                            ? 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
-                            : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                        }`}
-                      >
-                        {item.urgency}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 w-40">
-                      <div className="flex items-center gap-2">
-                        <div className="h-2 flex-1 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                          <div className="h-full bg-blue-600 rounded-full" style={{ width: `${item.progress}%` }} />
-                        </div>
-                        <span className="font-mono text-[10px] font-bold text-slate-600 dark:text-slate-400">{item.progress}%</span>
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      <button
-                        onClick={() => router.push(`/navigator?q=${encodeURIComponent(item.title)}`)}
-                        className="rounded-xl bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-600 hover:bg-blue-100 dark:bg-blue-950 dark:text-blue-300 transition"
-                      >
-                        Open Case
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="text-2xl font-bold text-white">{stats.followers.toLocaleString()}</div>
+          <div className="text-xs text-emerald-400 font-medium mt-1">Growth {stats.growth}</div>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+          <div className="flex justify-between items-center text-slate-400 mb-2">
+            <span className="text-xs font-medium uppercase tracking-wider">Total Views</span>
+            <Eye className="w-4 h-4 text-amber-400" />
           </div>
-        )}
+          <div className="text-2xl font-bold text-white">{stats.totalViews}</div>
+          <div className="text-xs text-slate-400 font-medium mt-1">Across Shorts & Reels</div>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+          <div className="flex justify-between items-center text-slate-400 mb-2">
+            <span className="text-xs font-medium uppercase tracking-wider">Videos Rendered</span>
+            <Film className="w-4 h-4 text-emerald-400" />
+          </div>
+          <div className="text-2xl font-bold text-white">{stats.videos}</div>
+          <div className="text-xs text-emerald-400 font-medium mt-1">100% Fact Checked</div>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+          <div className="flex justify-between items-center text-slate-400 mb-2">
+            <span className="text-xs font-medium uppercase tracking-wider">Content Score</span>
+            <ShieldCheck className="w-4 h-4 text-blue-400" />
+          </div>
+          <div className="text-2xl font-bold text-white">92 / 100</div>
+          <div className="text-xs text-slate-400 font-medium mt-1">High Quality Threshold Passed</div>
+        </div>
+      </div>
+
+      {/* Pipeline & AI Status */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        {/* Left Column - Today's Automated Routine */}
+        <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-lg font-bold text-white flex items-center space-x-2">
+              <span>TODAY'S PRODUCTION PIPELINE</span>
+            </h2>
+            <span className="text-xs text-slate-400">Scheduled: 18:00 IST</span>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3.5 bg-slate-950 rounded-xl border border-slate-800">
+              <div className="flex items-center space-x-3">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                <span className="text-sm font-medium text-slate-200">Topic Selected: "How Mumbai Became a City of Seven Islands"</span>
+              </div>
+              <span className="text-xs font-mono bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded">Score 91/100</span>
+            </div>
+
+            <div className="flex items-center justify-between p-3.5 bg-slate-950 rounded-xl border border-slate-800">
+              <div className="flex items-center space-x-3">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                <span className="text-sm font-medium text-slate-200">Research & Fact Checking (3 Claims Verified)</span>
+              </div>
+              <span className="text-xs font-mono bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded">ASI Verified</span>
+            </div>
+
+            <div className="flex items-center justify-between p-3.5 bg-slate-950 rounded-xl border border-slate-800">
+              <div className="flex items-center space-x-3">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                <span className="text-sm font-medium text-slate-200">Hinglish Script & Scene Storyboard Generated</span>
+              </div>
+              <span className="text-xs font-mono bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded">45 sec</span>
+            </div>
+
+            <div className="flex items-center justify-between p-3.5 bg-slate-950 rounded-xl border border-slate-800">
+              <div className="flex items-center space-x-3">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                <span className="text-sm font-medium text-slate-200">2D Animation & Audio Ducking Rendered (FFmpeg)</span>
+              </div>
+              <span className="text-xs font-mono bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded">1080x1920 MP4</span>
+            </div>
+
+            <div className="flex items-center justify-between p-3.5 bg-slate-950 rounded-xl border border-slate-800">
+              <div className="flex items-center space-x-3">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                <span className="text-sm font-medium text-slate-200">Quality Check Passed & Reel Scheduled</span>
+              </div>
+              <span className="text-xs font-mono bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded">Ready to Publish</span>
+            </div>
+          </div>
+
+          {/* Next Video rendering progress */}
+          <div className="mt-8 pt-6 border-t border-slate-800">
+            <div className="flex justify-between items-center text-sm font-medium mb-2">
+              <span className="text-slate-300">NEXT VIDEO IN PRODUCTION: "How Kolkata Got Its Name"</span>
+              <span className="text-orange-400 font-mono">82%</span>
+            </div>
+            <div className="w-full bg-slate-950 h-3 rounded-full overflow-hidden border border-slate-800">
+              <div className="bg-gradient-to-r from-orange-500 to-amber-500 h-full w-[82%] rounded-full" />
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column - AI Insights & Agent Status */}
+        <div className="space-y-6">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-4 flex items-center space-x-2">
+              <Sparkles className="w-4 h-4 text-amber-400" />
+              <span>AI STRATEGY INSIGHT</span>
+            </h3>
+            <p className="text-xs text-slate-300 leading-relaxed bg-slate-950 p-4 rounded-xl border border-slate-800">
+              "Historical city origin stories are currently your strongest content category, generating 3.4x higher share rates."
+            </p>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-4">AGENT STATUS CENTER</h3>
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex items-center space-x-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span className="text-slate-300">TopicAgent</span>
+              </div>
+              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex items-center space-x-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span className="text-slate-300">FactCheckAgent</span>
+              </div>
+              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex items-center space-x-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span className="text-slate-300">ScriptAgent</span>
+              </div>
+              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex items-center space-x-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span className="text-slate-300">AnimationAgent</span>
+              </div>
+              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex items-center space-x-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span className="text-slate-300">QualityAgent</span>
+              </div>
+              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex items-center space-x-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span className="text-slate-300">PublishingAgent</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-  );
+  )
 }

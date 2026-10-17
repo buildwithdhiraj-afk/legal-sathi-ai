@@ -29,6 +29,7 @@ import Markdown from '@/components/markdown';
 import SmartSuggestions from '@/components/smart-suggestions';
 import GuestLimitModal from '@/components/guest-limit-modal';
 import { getGuestCount, incrementGuestCount, isGuestLimitReached } from '@/lib/guest';
+import { apiUrl } from '@/lib/api';
 
 type Message =
   | { role: 'user'; content: string }
@@ -55,15 +56,31 @@ export default function ChatPage() {
     'Tenant Security Deposit Dispute',
     'POSH Workplace Complaint Steps',
   ]);
+  const [recentChats, setRecentChats] = useState<
+    { id: number; query: string; domain: string; timestamp: string }[]
+  >([]);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const initialHandled = useRef(false);
 
+  const loadHistory = async (token: string) => {
+    try {
+      const res = await fetch(apiUrl('/api/chat/history'), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRecentChats(Array.isArray(data) ? data.slice(0, 8) : []);
+      }
+    } catch {}
+  };
+
   useEffect(() => {
     const token = localStorage.getItem('legalsathi_token');
     if (token) {
       setIsLoggedIn(true);
+      loadHistory(token);
     } else {
       setGuestCount(getGuestCount());
     }
@@ -79,6 +96,89 @@ export default function ChatPage() {
       handleSend(initialQuery);
     }
   }, [initialQuery]);
+
+  const updateLastAssistant = (
+    updater: (m: Extract<Message, { role: 'assistant' }>) => Extract<Message, { role: 'assistant' }>
+  ) => {
+    setMessages((prev) => {
+      const idx = prev.map((m) => m.role).lastIndexOf('assistant');
+      if (idx === -1) return prev;
+      const copy = [...prev];
+      copy[idx] = updater(copy[idx] as Extract<Message, { role: 'assistant' }>);
+      return copy;
+    });
+  };
+
+  const sendNonStreaming = async (text: string, authHeaders: Record<string, string>) => {
+    const res = await fetch(apiUrl('/api/chat'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({ query: text, language: 'en' }),
+    });
+    if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+    const data: LegalResponse = await res.json();
+    setMessages((prev) => [
+      ...prev,
+      { role: 'assistant', content: data.summary || 'Legal response', response: data },
+    ]);
+  };
+
+  const streamChat = async (
+    text: string,
+    authHeaders: Record<string, string>,
+    onFirstEvent: () => void
+  ): Promise<boolean> => {
+    const res = await fetch(apiUrl('/api/chat/stream'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({ query: text, language: 'en' }),
+    });
+    if (!res.ok || !res.body) return false;
+
+    onFirstEvent();
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    const partial: Partial<LegalResponse> = {};
+    let buffer = '';
+    let gotAnything = false;
+
+    const flushEvent = (block: string) => {
+      let event = 'message';
+      let dataStr = '';
+      for (const line of block.split('\n')) {
+        if (line.startsWith('event:')) event = line.slice(6).trim();
+        else if (line.startsWith('data:')) dataStr += line.slice(5).trim();
+      }
+      if (!dataStr) return;
+      let data: Record<string, unknown>;
+      try {
+        data = JSON.parse(dataStr);
+      } catch {
+        return;
+      }
+      Object.assign(partial, data);
+      gotAnything = true;
+      updateLastAssistant((m) => ({
+        ...m,
+        content: partial.summary || '',
+        response: { ...(partial as LegalResponse) },
+      }));
+    };
+
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const blocks = buffer.split('\n\n');
+      buffer = blocks.pop() || '';
+      for (const block of blocks) flushEvent(block);
+    }
+    if (buffer.trim()) flushEvent(buffer);
+
+    return gotAnything && !!partial.summary;
+  };
 
   const handleSend = async (customQuery?: string) => {
     const textToSend = (customQuery || query).trim();
@@ -102,20 +202,38 @@ export default function ChatPage() {
       }
     }
 
+    const token = typeof window !== 'undefined' ? localStorage.getItem('legalsathi_token') : null;
+    const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
     try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: userMsg.content, language: 'en' }),
-      });
+      let streamed = false;
+      try {
+        let placeholderAdded = false;
+        streamed = await streamChat(textToSend, authHeaders, () => {
+          placeholderAdded = true;
+          setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
+        });
+        if (!streamed && placeholderAdded) {
+          // Stream produced nothing usable — drop the empty placeholder.
+          setMessages((prev) => {
+            const idx = prev.map((m) => m.role).lastIndexOf('assistant');
+            if (idx !== -1 && !(prev[idx] as { response?: unknown }).response) {
+              return [...prev.slice(0, idx), ...prev.slice(idx + 1)];
+            }
+            return prev;
+          });
+        }
+      } catch {
+        streamed = false;
+      }
 
-      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+      if (!streamed) {
+        await sendNonStreaming(textToSend, authHeaders);
+      }
 
-      const data: LegalResponse = await res.json();
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: data.summary || 'Legal response', response: data },
-      ]);
+      if (isLoggedIn && token) {
+        loadHistory(token);
+      }
     } catch (err) {
       setMessages((prev) => [
         ...prev,
@@ -177,17 +295,21 @@ export default function ChatPage() {
               <History size={12} /> Recent History
             </div>
             <div className="space-y-1">
-              {['IPC 302 legal implications', 'POSH committee filing procedure', 'Consumer court fee structure'].map(
-                (item, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => handleSend(item)}
-                    className="w-full text-left truncate rounded-xl px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition"
-                  >
-                    {item}
-                  </button>
-                )
+              {recentChats.length === 0 && (
+                <p className="px-3 py-2 text-[11px] text-slate-400">
+                  {isLoggedIn ? 'No saved consultations yet.' : 'Sign in to save your history.'}
+                </p>
               )}
+              {recentChats.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => handleSend(item.query)}
+                  className="w-full text-left truncate rounded-xl px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition"
+                  title={item.query}
+                >
+                  {item.query}
+                </button>
+              ))}
             </div>
           </div>
         </div>

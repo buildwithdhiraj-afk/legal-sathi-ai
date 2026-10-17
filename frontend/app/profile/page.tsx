@@ -57,8 +57,8 @@ export default function ProfilePage() {
     setLoading(true);
     try {
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/auth/me?token=${encodeURIComponent(authToken)}`,
-        { headers: { 'Bypass-Tunnel-Remainder': 'true' } }
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/auth/me`,
+        { headers: { Authorization: `Bearer ${authToken}` } }
       );
       if (res.ok) {
         const u = await res.json();
@@ -84,10 +84,10 @@ export default function ProfilePage() {
     setErrMsg('');
     try {
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/auth/profile/update?token=${encodeURIComponent(token)}`,
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/auth/profile/update`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Bypass-Tunnel-Remainder': 'true' },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify(formData),
         }
       );
@@ -108,10 +108,10 @@ export default function ProfilePage() {
     setErrMsg('');
     try {
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/auth/profile/change-password?token=${encodeURIComponent(token)}`,
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/auth/profile/change-password`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Bypass-Tunnel-Remainder': 'true' },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify(pwdData),
         }
       );

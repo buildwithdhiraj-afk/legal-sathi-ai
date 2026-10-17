@@ -3,21 +3,25 @@ services:
     name: legalsathi-backend
     env: python
     buildCommand: pip install -r backend/requirements.txt
-    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
-      - key: DATABASE_URL
-        value: sqlite:///./legalsathi.db
       - key: SECRET_KEY
         generateValue: true
+      - key: DATABASE_URL
+        value: sqlite:///./legalsathi.db
       - key: GEMINI_API_KEY
         sync: false
       - key: ALLOWED_ORIGINS
-        value: http://localhost:3000
+        value: https://frontend-ivory-theta-s5ihbgbldt.vercel.app
+      - key: ALLOWED_ORIGIN_REGEX
+        value: https://([a-z0-9-]+\.)?(vercel\.app|github\.io)
+      - key: FRONTEND_URL
+        value: https://frontend-ivory-theta-s5ihbgbldt.vercel.app
 
   - type: web
     name: legalsathi-frontend
     env: node
-    buildCommand: cd frontend && npm install && npm run build
+    buildCommand: cd frontend && npm ci && npm run build
     startCommand: cd frontend && npm run start
     envVars:
       - key: NEXT_PUBLIC_API_URL

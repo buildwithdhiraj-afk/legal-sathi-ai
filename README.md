@@ -8,7 +8,7 @@ An AI-powered multilingual Legal Information and Guidance Platform built with Ne
 ---
 
 ## Architecture & Tech Stack
-- **Frontend**: Next.js 14, React 18, Tailwind CSS, TypeScript (Deployed on **Vercel Free**)
+- **Frontend**: Next.js 14, React 18, Tailwind CSS, TypeScript (Deployed on **GitHub Pages** as a static export)
 - **Backend**: FastAPI, Python 3.12, Gunicorn, Uvicorn, SQLAlchemy 2.0 (Deployed on **Render Free**)
 - **Database**: PostgreSQL (Hosted on **Supabase Free** / **Neon Free** or SQLite for local dev)
 - **AI Engine**: Gemini API, Sentence Transformers, RAG Pipeline
@@ -30,15 +30,17 @@ An AI-powered multilingual Legal Information and Guidance Platform built with Ne
    - `DATABASE_URL`: Your Supabase/Neon PostgreSQL URL (or default SQLite)
    - `SECRET_KEY`: Random 32+ character string
    - `GEMINI_API_KEY`: Your Google Gemini API Key
-   - `ALLOWED_ORIGINS`: `https://<your-vercel-app>.vercel.app`
+   - `ALLOWED_ORIGINS`: `https://<your-user>.github.io`
+   - `ALLOWED_ORIGIN_REGEX`: `https://([a-z0-9-]+\.)?(vercel\.app|github\.io)` (Pages + preview deploys)
 4. Deploy the backend service. Your backend API URL will be `https://<your-render-backend>.onrender.com`.
 
-### Step 3: Frontend Deployment (Vercel Free)
-1. Go to [Vercel](https://vercel.com/new) and import `buildwithdhiraj-afk/legal-sathi-ai`.
-2. Set **Root Directory** to `frontend`.
-3. Set Environment Variable:
+### Step 3: Frontend Deployment (GitHub Pages - static export)
+The frontend is a static export (`output: 'export'`) published from `frontend/out` to `https://<your-user>.github.io/legal-sathi-ai/`.
+1. Push the repo to GitHub, then open **Settings -> Pages**.
+2. Set **Source** to **GitHub Actions**.
+3. Add a repository variable (**Settings -> Secrets and variables -> Actions -> Variables**):
    - `NEXT_PUBLIC_API_URL`: `https://<your-render-backend>.onrender.com`
-4. Click **Deploy**.
+4. The included workflow (`.github/workflows/deploy-pages.yml`) builds the static site and publishes it to Pages on every push to `main`.
 
 ---
 
@@ -61,6 +63,22 @@ docker-compose up --build
 
 ## API Endpoints
 - **Frontend App**: `http://localhost:3000`
-- **Backend API Docs**: `http://localhost:8000/docs`
+- **Backend API Docs**: `http://localhost:8000/docs` (development only; disabled in production)
 - **Health Check**: `http://localhost:8000/health`
 - **System Status**: `http://localhost:8000/status`
+
+---
+
+## 🚀 Development Roadmap & Upgrades
+
+This project is currently being upgraded for production readiness:
+
+- [x] **Legal**: Implement Mandatory Citations in RAG pipeline.
+- [x] **Legal**: Add Legal Disclaimer UI component.
+- [x] **Security**: Implement PII Redaction Pipeline (see `.env.example`).
+- [x] **Tech**: Implement Hybrid Search (Vector + BM25) [Dependencies Added, Implementation Done].
+- [x] **Tech**: Setup RAG Evaluation (RAGAS integration) [Implemented dataset and evaluation scaffold].
+- [x] **UX**: Implement Clickable Source Highlighting [Backend citation parsing + Frontend Chip UI].
+- [x] **Security**: Role-Based Access Control (RBAC) [JWT Bearer Auth, Admin/User roles, Protected routes].
+- [x] **Security**: Audit Logging [Detailed logging of queries, PII redaction, and admin actions].
+

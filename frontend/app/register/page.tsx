@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Check, CheckCircle2, Eye, EyeOff, Globe, Loader2, Lock, Mail, Phone, Scale, Shield, User } from 'lucide-react';
+import { apiUrl } from '@/lib/api';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -50,14 +51,18 @@ export default function RegisterPage() {
       return;
     }
 
-    if (formData.password.length < 6) {
-      setErrorMsg('Password must be at least 6 characters long.');
+    if (formData.password.length < 8) {
+      setErrorMsg('Password must be at least 8 characters long.');
+      return;
+    }
+    if (!/[A-Za-z]/.test(formData.password) || !/[0-9]/.test(formData.password)) {
+      setErrorMsg('Password must contain at least one letter and one number.');
       return;
     }
 
     setLoading(true);
     try {
-      const res = await fetch('/api/auth/register', {
+      const res = await fetch(apiUrl('/api/auth/register'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),

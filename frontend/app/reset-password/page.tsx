@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Eye, EyeOff, Loader2, Lock, Shield, CheckCircle2 } from 'lucide-react';
+import { apiUrl } from '@/lib/api';
 
 export default function ResetPasswordPage() {
   const searchParams = useSearchParams();
@@ -28,14 +29,11 @@ export default function ResetPasswordPage() {
 
     setLoading(true);
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/auth/reset-password`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Bypass-Tunnel-Remainder': 'true' },
-          body: JSON.stringify({ token, new_password: newPassword, confirm_password: confirmPassword }),
-        }
-      );
+      const res = await fetch(apiUrl('/api/auth/reset-password'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, new_password: newPassword, confirm_password: confirmPassword }),
+      });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Password reset failed');

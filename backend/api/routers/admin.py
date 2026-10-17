@@ -1,10 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+import os
+from datetime import datetime, time, timedelta
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from database.session import get_db
 from database.models import User, GeneratedDocument, ChatHistory, LegalCase, AuditLog, SystemSetting, LegalTemplate, KnowledgeFile
-from utils.security import get_password_hash, verify_password, create_access_token, decode_token
+from utils.security import get_password_hash, verify_password, create_access_token, decode_token, get_current_admin
+from utils.audit_logger import log_event
+from utils.rate_limit import limiter
 
 router = APIRouter()
 
@@ -13,29 +19,14 @@ class AdminLoginRequest(BaseModel):
     password: str
 
 @router.post("/login")
-def admin_login(req: AdminLoginRequest, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def admin_login(request: Request, req: AdminLoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == req.admin_email.lower(), User.role == "admin").first()
-    if not user and req.admin_email.lower() == "admin@legalsathi.ai":
-        hashed_pwd = get_password_hash(req.password)
-        user = User(
-            email="admin@legalsathi.ai",
-            hashed_password=hashed_pwd,
-            first_name="Admin",
-            last_name="System",
-            role="admin",
-            is_verified=True,
-            is_active=True,
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-
     if not user or not verify_password(req.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid administrator credentials")
 
     access_token = create_access_token(data={"sub": user.email, "role": "admin", "id": user.id})
-    db.add(AuditLog(user_id=user.id, action="ADMIN_LOGIN"))
-    db.commit()
+    log_event(db=db, action="ADMIN_LOGIN", user_id=user.id)
 
     return {
         "access_token": access_token,
@@ -67,21 +58,33 @@ class KnowledgeUploadRequest(BaseModel):
 
 
 @router.post("/users/reset-password")
-def admin_reset_user_password(req: ResetUserPasswordRequest, token: str = Query(...), db: Session = Depends(get_db)):
-    admin = verify_admin_access(token, db)
+def admin_reset_user_password(req: ResetUserPasswordRequest, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
     user = db.query(User).filter(User.id == req.user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     user.hashed_password = get_password_hash(req.new_password)
-    db.add(AuditLog(user_id=admin.id, action=f"ADMIN_RESET_USER_{user.id}_PASSWORD"))
-    db.commit()
+    log_event(db=db, action=f"ADMIN_RESET_USER_{user.id}_PASSWORD", user_id=admin.id)
     return {"status": "success", "message": f"Password reset for user {user.email}"}
 
 
+@router.get("/logs")
+def get_audit_logs(db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
+    logs = db.query(AuditLog).order_by(AuditLog.timestamp.desc()).limit(100).all()
+    return [
+        {
+            "id": l.id,
+            "user_id": l.user_id,
+            "action": l.action,
+            "domain": l.domain_detected,
+            "timestamp": l.timestamp.strftime("%Y-%m-%d %H:%M:%S") if l.timestamp else "",
+        }
+        for l in logs
+    ]
+
+
 @router.get("/documents")
-def get_all_documents(token: str = Query(...), db: Session = Depends(get_db)):
-    verify_admin_access(token, db)
+def get_all_documents(db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
     docs = db.query(GeneratedDocument).order_by(GeneratedDocument.created_at.desc()).all()
     return [
         {
@@ -96,20 +99,18 @@ def get_all_documents(token: str = Query(...), db: Session = Depends(get_db)):
 
 
 @router.delete("/documents/{doc_id}")
-def delete_document(doc_id: int, token: str = Query(...), db: Session = Depends(get_db)):
-    admin = verify_admin_access(token, db)
+def delete_document(doc_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
     doc = db.query(GeneratedDocument).filter(GeneratedDocument.id == doc_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     db.delete(doc)
-    db.add(AuditLog(user_id=admin.id, action=f"ADMIN_DELETED_DOC_{doc_id}"))
+    log_event(db=db, action=f"ADMIN_DELETED_DOC_{doc_id}", user_id=admin.id)
     db.commit()
     return {"status": "success", "message": f"Document {doc_id} deleted."}
 
 
 @router.get("/templates")
-def get_templates(token: str = Query(...), db: Session = Depends(get_db)):
-    verify_admin_access(token, db)
+def get_templates(db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
     templates = db.query(LegalTemplate).all()
     if not templates:
         # Return default master templates
@@ -127,24 +128,9 @@ def get_templates(token: str = Query(...), db: Session = Depends(get_db)):
 
 
 @router.get("/knowledge")
-def get_knowledge_files(token: str = Query(...), db: Session = Depends(get_db)):
-    verify_admin_access(token, db)
+def get_knowledge_files(db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
     files = db.query(KnowledgeFile).all()
-    if not files:
-        return [
-            {"id": 1, "filename": "Bharatiya_Nyaya_Sanhita_2023.pdf", "category": "Acts", "file_size": "4.2 MB", "uploaded_at": "2026-01-10"},
-            {"id": 2, "filename": "Bharatiya_Nagarik_Suraksha_Sanhita_2023.pdf", "category": "Acts", "file_size": "5.1 MB", "uploaded_at": "2026-01-12"},
-            {"id": 3, "filename": "IT_Act_2000_Section66D_Guidelines.pdf", "category": "Government Notifications", "file_size": "1.8 MB", "uploaded_at": "2026-02-01"},
-            {"id": 4, "filename": "Supreme_Court_Arnesh_Kumar_Landmark_Judgement.pdf", "category": "Court Judgements", "file_size": "2.4 MB", "uploaded_at": "2026-02-15"},
-        ]
     return files
-from pydantic import BaseModel
-from typing import Optional, List
-import json
-from datetime import datetime
-from utils.security import get_password_hash, decode_token
-
-router = APIRouter()
 
 class UserActionRequest(BaseModel):
     user_id: int
@@ -154,46 +140,58 @@ class SettingUpdateRequest(BaseModel):
     key: str
     value: str
 
-def verify_admin_access(token: str, db: Session):
-    payload = decode_token(token)
-    email = payload.get("sub")
-    role = payload.get("role")
-    if not email or role != "admin":
-        raise HTTPException(status_code=403, detail="Administrator access required")
-    user = db.query(User).filter(User.email == email, User.role == "admin").first()
-    if not user:
-        raise HTTPException(status_code=403, detail="Administrator access required")
-    return user
-
 
 @router.get("/stats")
-def get_admin_stats(token: str = Query(...), db: Session = Depends(get_db)):
-    verify_admin_access(token, db)
+def get_admin_stats(db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
 
     total_users = db.query(User).count()
     active_users = db.query(User).filter(User.is_active == True).count()
     verified_users = db.query(User).filter(User.is_verified == True).count()
-    total_chats = db.query(ChatHistory).count()
+
+    now = datetime.utcnow()
+    start_of_today = datetime.combine(now.date(), time.min)
+    end_of_today = start_of_today + timedelta(days=1)
+    chats_today = db.query(ChatHistory).filter(
+        ChatHistory.timestamp >= start_of_today,
+        ChatHistory.timestamp < end_of_today,
+    ).count()
+
     total_documents = db.query(GeneratedDocument).count()
     total_cases = db.query(LegalCase).count()
+    total_events = db.query(AuditLog).count()
+
+    top_domain = (
+        db.query(ChatHistory.domain, func.count(ChatHistory.id))
+        .group_by(ChatHistory.domain)
+        .order_by(func.count(ChatHistory.id).desc())
+        .first()
+    )
+    most_used_category = top_domain[0] if top_domain and top_domain[0] else "N/A"
+
+    storage_bytes = 0
+    for f in db.query(KnowledgeFile).all():
+        if f.file_path and os.path.exists(f.file_path):
+            try:
+                storage_bytes += os.path.getsize(f.file_path)
+            except OSError:
+                pass
+    storage_used = f"{storage_bytes / (1024 * 1024):.1f} MB" if storage_bytes else "0 B"
 
     return {
         "total_users": total_users,
         "active_users": active_users,
         "verified_users": verified_users,
-        "chats_today": total_chats,
+        "chats_today": chats_today,
         "generated_documents": total_documents,
         "saved_cases": total_cases,
-        "api_usage": "Normal (99.9% uptime)",
-        "most_used_category": "Rental Disputes & Women's Rights",
-        "average_response_time": "0.45s",
-        "storage_used": "14.2 MB",
+        "api_usage": f"{total_events} requests logged",
+        "most_used_category": most_used_category,
+        "storage_used": storage_used,
     }
 
 
 @router.get("/users")
-def get_all_users(token: str = Query(...), db: Session = Depends(get_db)):
-    verify_admin_access(token, db)
+def get_all_users(db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
     users = db.query(User).order_by(User.created_at.desc()).all()
     res = []
     for u in users:
@@ -215,8 +213,7 @@ def get_all_users(token: str = Query(...), db: Session = Depends(get_db)):
 
 
 @router.post("/users/action")
-def user_action(req: UserActionRequest, token: str = Query(...), db: Session = Depends(get_db)):
-    admin = verify_admin_access(token, db)
+def user_action(req: UserActionRequest, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
     target_user = db.query(User).filter(User.id == req.user_id).first()
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -243,14 +240,13 @@ def user_action(req: UserActionRequest, token: str = Query(...), db: Session = D
     else:
         raise HTTPException(status_code=400, detail="Invalid action")
 
-    db.add(AuditLog(user_id=admin.id, action=action_text))
+    log_event(db=db, action=action_text, user_id=admin.id)
     db.commit()
     return {"status": "success", "message": f"User ID {req.user_id} updated: {req.action}"}
 
 
 @router.get("/settings")
-def get_system_settings(token: str = Query(...), db: Session = Depends(get_db)):
-    verify_admin_access(token, db)
+def get_system_settings(db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
     settings = db.query(SystemSetting).all()
     res = {s.setting_key: s.setting_value for s in settings}
     # Defaults
@@ -263,14 +259,13 @@ def get_system_settings(token: str = Query(...), db: Session = Depends(get_db)):
 
 
 @router.post("/settings")
-def update_system_setting(req: SettingUpdateRequest, token: str = Query(...), db: Session = Depends(get_db)):
-    admin = verify_admin_access(token, db)
+def update_system_setting(req: SettingUpdateRequest, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
     setting = db.query(SystemSetting).filter(SystemSetting.setting_key == req.key).first()
     if setting:
         setting.setting_value = req.value
     else:
         db.add(SystemSetting(setting_key=req.key, setting_value=req.value))
 
-    db.add(AuditLog(user_id=admin.id, action=f"SETTING_UPDATED_{req.key}"))
+    log_event(db=db, action=f"SETTING_UPDATED_{req.key}", user_id=admin.id)
     db.commit()
     return {"status": "success", "key": req.key, "value": req.value}

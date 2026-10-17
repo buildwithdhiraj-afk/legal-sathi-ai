@@ -3,34 +3,33 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { Loader2, Mail, Shield, CheckCircle2 } from 'lucide-react';
+import { apiUrl } from '@/lib/api';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
-  const [tokenPreview, setTokenPreview] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || loading) return;
 
+    setErrorMsg('');
     setLoading(true);
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/auth/forgot-password`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Bypass-Tunnel-Remainder': 'true' },
-          body: JSON.stringify({ email }),
-        }
-      );
+      const res = await fetch(apiUrl('/api/auth/forgot-password'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
 
-      const data = await res.json();
-      setStatusMsg(data.message || 'Password reset link dispatched.');
-      if (data.token_preview) {
-        setTokenPreview(data.token_preview);
-      }
-    } catch {}
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'Could not send reset link. Please try again.');
+      setStatusMsg(data.message || 'If that email exists, a password reset link has been sent.');
+    } catch (err) {
+      setErrorMsg((err as Error).message);
+    }
     setLoading(false);
   };
 
@@ -50,20 +49,16 @@ export default function ForgotPasswordPage() {
           </p>
         </div>
 
+        {errorMsg && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-800">
+            ⚠️ {errorMsg}
+          </div>
+        )}
+
         {statusMsg ? (
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-center space-y-3">
             <CheckCircle2 size={32} className="mx-auto text-emerald-600" />
             <p className="text-xs font-bold text-emerald-800">{statusMsg}</p>
-            {tokenPreview && (
-              <div className="pt-2">
-                <Link
-                  href={`/reset-password?token=${tokenPreview}`}
-                  className="inline-block rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700"
-                >
-                  Simulate Reset Email Link
-                </Link>
-              </div>
-            )}
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">

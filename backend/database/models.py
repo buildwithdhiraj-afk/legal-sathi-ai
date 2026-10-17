@@ -114,9 +114,13 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, nullable=True)
-    action = Column(String, nullable=False)
+    user_id = Column(Integer, nullable=True)          # None for guest users
+    action = Column(String, nullable=False)           # e.g. CHAT_QUERY, LOGIN, REGISTER
+    query_text = Column(Text, nullable=True)          # Redacted query text (PII removed)
+    domain_detected = Column(String, nullable=True)   # e.g. Women's Rights
+    confidence_score = Column(String, nullable=True)  # confidence of the RAG response
     ip_address = Column(String, nullable=True)
+    user_agent = Column(String, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
 class SystemSetting(Base):

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { ShieldCheck, ExternalLink, ArrowRight, X, Sparkles, Building2, Calendar, FileText } from 'lucide-react';
+import { apiUrl } from '@/lib/api';
 
 export type GovernmentAnnouncement = {
   id: number;
@@ -29,7 +30,7 @@ export default function GovtAnnouncementsWidget() {
 
   const fetchAnnouncements = async () => {
     try {
-      const res = await fetch('/api/announcements');
+      const res = await fetch(apiUrl('/api/announcements/latest'));
       if (res.ok) {
         const data = await res.json();
         setAnnouncements(data);

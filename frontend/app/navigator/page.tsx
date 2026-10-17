@@ -30,6 +30,7 @@ import {
   Sparkles,
   Upload,
 } from 'lucide-react';
+import { apiUrl } from '@/lib/api';
 import type { CaseAnalysis, SavedCase } from './types';
 
 export default function NavigatorPage() {
@@ -41,6 +42,8 @@ export default function NavigatorPage() {
   const [analysis, setAnalysis] = useState<CaseAnalysis | null>(null);
   const [savedCases, setSavedCases] = useState<SavedCase[]>([]);
   const [savedStatusMsg, setSavedStatusMsg] = useState('');
+  const [analyzeError, setAnalyzeError] = useState('');
+  const [draftError, setDraftError] = useState('');
 
   // Draft document state
   const [draftContent, setDraftContent] = useState('');
@@ -59,8 +62,9 @@ export default function NavigatorPage() {
 
   const fetchSavedCases = async () => {
     try {
-      const res = await fetch('/api/navigator/cases', {
-        headers: { 'Bypass-Tunnel-Remainder': 'true' },
+      const token = typeof window !== 'undefined' ? localStorage.getItem('legalsathi_token') : null;
+      const res = await fetch(apiUrl('/api/navigator/cases'), {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (res.ok) {
         const data = await res.json();
@@ -74,13 +78,19 @@ export default function NavigatorPage() {
     if (!q.trim()) return;
 
     // Instant non-blocking step transition (<10ms)
+    setAnalyzeError('');
     setWizardStep(targetStep);
     setLoading(true);
 
+    const token = typeof window !== 'undefined' ? localStorage.getItem('legalsathi_token') : null;
+
     try {
-      const res = await fetch('/api/navigator/analyze', {
+      const res = await fetch(apiUrl('/api/navigator/analyze'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Bypass-Tunnel-Remainder': 'true' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           query: q,
           answers: customAnswers || answers,
@@ -94,63 +104,27 @@ export default function NavigatorPage() {
         setLoading(false);
         return;
       }
-    } catch {}
 
-    // Seamless Fallback Analysis Engine
-    const caseId = analysis?.case_id || `CASE-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const fallbackData: CaseAnalysis = {
-      case_id: caseId,
-      case_summary: q,
-      legal_category: q.toLowerCase().includes('cyber') ? 'Cyber Crime' : q.toLowerCase().includes('rent') ? 'Rental Laws' : 'General Legal Notice',
-      urgency_level: q.toLowerCase().includes('urgent') || q.toLowerCase().includes('threat') ? 'Critical' : 'High',
-      confidence_score: 0.95,
-      progress_percentage: 45,
-      clarifying_questions: [
-        { id: 'q-1', question: 'Where did the incident occur (State/City)?', answered: Boolean(customAnswers?.['q-1']), answer_value: customAnswers?.['q-1'] || '' },
-        { id: 'q-2', question: 'Do you have written proof, receipts, or message logs?', answered: Boolean(customAnswers?.['q-2']), answer_value: customAnswers?.['q-2'] || '' },
-        { id: 'q-3', question: 'Have you issued any previous legal notice or complaint?', answered: Boolean(customAnswers?.['q-3']), answer_value: customAnswers?.['q-3'] || '' },
-      ],
-      action_plan: {
-        immediate_actions: [{ step: 1, title: 'Preserve All Evidence', purpose: 'Secure chat logs, bank transactions & receipts.', why_it_matters: 'Evidence is required in legal filings.', expected_outcome: 'Proof repository ready.' }],
-        actions_24h: [{ step: 2, title: 'Draft Formal Notice / Complaint', purpose: 'Send registered notice giving 7-15 days for resolution.', why_it_matters: 'Establishes legal intention.', expected_outcome: 'Notice served to opposing party.' }],
-        actions_7d: [{ step: 3, title: 'Approach Relevant Tribunal or Station', purpose: 'File grievance with competent statutory authority.', why_it_matters: 'Triggers official legal process.', expected_outcome: 'Matter registered for hearing.' }],
-        long_term_actions: [{ step: 4, title: 'Follow Up & Court Appearance', purpose: 'Represent case with legal aid or advocate.', why_it_matters: 'Ensures final recovery or relief.', expected_outcome: 'Binding court order or settlement.' }],
-      },
-      evidence_checklist: [
-        { id: 'ev-1', item: 'Identity Proof (Aadhaar / Voter ID)', description: 'Required for complainant verification.', status: 'pending' },
-        { id: 'ev-2', item: 'Written Proof & Transaction Receipts', description: 'Bank statements, rent agreements or chats.', status: 'pending' },
-        { id: 'ev-3', item: 'Copies of Notices Exchanged', description: 'Letters or emails sent previously.', status: 'pending' },
-      ],
-      required_documents: [
-        { doc_name: 'Complainant Aadhaar Card', why_needed: 'Identity verification', where_to_obtain: 'UIDAI Portal', accepted_formats: 'PDF / JPEG' },
-        { doc_name: 'Transaction / Contract Copy', why_needed: 'Proof of dispute', where_to_obtain: 'Personal records', accepted_formats: 'PDF / DOCX' },
-      ],
-      authorities: [
-        { name: 'National Cyber Crime Portal', role: 'Helpline 1930 / cybercrime.gov.in', when_to_contact: 'Immediate online fraud', contact_guide: 'Call 1930', official_website: 'https://cybercrime.gov.in' },
-        { name: 'District Rent Controller / Consumer Forum', role: 'Statutory dispute adjudication', when_to_contact: 'Failure to settle notice', contact_guide: 'Approach district office', official_website: 'https://www.india.gov.in' },
-      ],
-      timeline_steps: [
-        { id: 't-1', step_name: 'Fact Intake & Document Audit', description: 'Gather proof & analyze facts', completed: true },
-        { id: 't-2', step_name: 'Issue Pre-Litigation Legal Notice', description: '15-day notice period', completed: false },
-        { id: 't-3', step_name: 'File Petition / Complaint', description: 'Official court filing', completed: false },
-      ],
-      risk_analysis: [
-        { risk_type: 'Limitation Expiry', description: 'Legal notices have strict statutory time limits.', recommendation: 'Serve notice within 30 days.' },
-      ],
-      draft_type: q.toLowerCase().includes('rent') ? 'Legal Notice to Landlord' : 'Police Complaint',
-      disclaimer: 'This automated legal analysis is provided for educational purposes. Consult a licensed advocate for court representation.',
-    };
+      const errData = await res.json().catch(() => ({}));
+      setAnalyzeError(errData.detail || `Analysis failed (HTTP ${res.status}). Please try again.`);
+    } catch {
+      setAnalyzeError('Could not reach the LegalSathi analysis service. Please try again.');
+    }
 
-    setAnalysis(fallbackData);
+    setWizardStep(1);
     setLoading(false);
   };
 
   const handleSaveCase = async () => {
     if (!analysis) return;
     try {
-      const res = await fetch('/api/navigator/cases/save', {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('legalsathi_token') : null;
+      const res = await fetch(apiUrl('/api/navigator/cases/save'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Bypass-Tunnel-Remainder': 'true' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           case_code: analysis.case_id,
           title: analysis.case_summary.slice(0, 80),
@@ -164,6 +138,9 @@ export default function NavigatorPage() {
       if (res.ok) {
         setSavedStatusMsg('Case saved successfully!');
         fetchSavedCases();
+        setTimeout(() => setSavedStatusMsg(''), 3000);
+      } else if (res.status === 401) {
+        setSavedStatusMsg('Please log in to save cases.');
         setTimeout(() => setSavedStatusMsg(''), 3000);
       }
     } catch {}
@@ -248,11 +225,16 @@ export default function NavigatorPage() {
 
   const handleGenerateDraft = async (type: string) => {
     if (!analysis) return;
+    setDraftError('');
     setLoadingDraft(true);
+    const token = typeof window !== 'undefined' ? localStorage.getItem('legalsathi_token') : null;
     try {
-      const res = await fetch('/api/navigator/draft', {
+      const res = await fetch(apiUrl('/api/navigator/draft'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Bypass-Tunnel-Remainder': 'true' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           draft_type: type,
           case_summary: analysis.case_summary,
@@ -265,8 +247,13 @@ export default function NavigatorPage() {
         setDraftTitle(data.title);
         setDraftContent(data.content);
         setWizardStep(5);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setDraftError(errData.detail || `Draft generation failed (HTTP ${res.status}). Please try again.`);
       }
-    } catch {}
+    } catch {
+      setDraftError('Could not reach the LegalSathi draft service. Please try again.');
+    }
     setLoadingDraft(false);
   };
 
@@ -442,13 +429,17 @@ export default function NavigatorPage() {
               </div>
 
               <div className="flex items-center justify-between pt-2">
-                <button
-                  type="button"
-                  onClick={() => setQuery('My landlord in Delhi is refusing to return my security deposit of 50000 rupees.')}
-                  className="text-xs text-blue-600 font-semibold hover:underline"
-                >
-                  Try sample query
-                </button>
+                {analyzeError ? (
+                  <p className="mr-3 text-xs font-semibold text-red-600">{analyzeError}</p>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setQuery('My landlord in Delhi is refusing to return my security deposit of 50000 rupees.')}
+                    className="text-xs text-blue-600 font-semibold hover:underline"
+                  >
+                    Try sample query
+                  </button>
+                )}
                 <button
                   onClick={() => handleAnalyze(query, answers, 2)}
                   disabled={loading || !query.trim()}
@@ -833,6 +824,9 @@ export default function NavigatorPage() {
                     Generate {analysis.draft_type} <ArrowRight size={14} />
                   </button>
                 </div>
+                {draftError && (
+                  <p className="pt-2 text-xs font-semibold text-red-600">{draftError}</p>
+                )}
               </>
             )}
           </div>

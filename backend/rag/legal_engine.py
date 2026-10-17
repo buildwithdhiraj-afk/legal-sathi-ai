@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 import ssl
@@ -9,6 +10,8 @@ import urllib.request
 from functools import lru_cache
 
 from config.settings import settings
+
+logger = logging.getLogger(__name__)
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ACTS_PATH = os.path.join(BASE_DIR, "knowledge_base", "acts", "master_acts.json")
@@ -88,8 +91,11 @@ def validate_url(url: str, timeout: int = 4) -> str:
     verified = False
     try:
         ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
+        # Verify the certificate chain and hostname. Disabling these (as the
+        # previous code did) would let a MITM host pass as an official .gov.in
+        # source, defeating the entire citation-verification feature.
+        ctx.check_hostname = True
+        ctx.verify_mode = ssl.CERT_REQUIRED
 
         req = urllib.request.Request(
             url,
@@ -578,6 +584,27 @@ class LegalEngine:
         self._acts_by_id = {}
         self._sections_by_act = {}
         self._lock = threading.Lock()
+        self.vector_store = None
+        self._init_vector_store()
+
+    def _init_vector_store(self):
+        """Lazily build the Chroma vector store.
+
+        The RAG embedding dependencies (langchain-huggingface, chromadb, ...)
+        are optional/heavy. If they are unavailable we log and continue with
+        keyword matching instead of crashing the whole application at import.
+        """
+        try:
+            from rag.embeddings import get_vector_store
+            self.vector_store = get_vector_store(
+                persist_directory=os.path.join(BASE_DIR, "rag", "chroma")
+            )
+        except Exception as exc:  # pragma: no cover - depends on env
+            logger.warning(
+                "Vector store unavailable (%s); falling back to keyword matching only.",
+                exc,
+            )
+            self.vector_store = None
 
     def load(self):
         with self._lock:
@@ -590,8 +617,22 @@ class LegalEngine:
             for s in self._sections:
                 self._sections_by_act.setdefault(s.get("act_id"), []).append(s)
 
+    def validate_query(self, query: str) -> bool:
+        """
+        Simple guardrail: check if query contains any keywords related to supported domains.
+        """
+        keywords = [
+            "law", "legal", "police", "fir", "complaint", "harassment", "rent",
+            "tenant", "cyber", "fraud", "consumer", "rights", "child", "senior",
+            "maintenance", "copyright", "property", "eviction"
+        ]
+        query_lower = query.lower()
+        return any(keyword in query_lower for keyword in keywords)
+
     def detect_domain(self, query):
         q = query.lower()
+        
+        # 1. Keyword-based matching (existing)
         best = None
         best_score = 0
         for domain in DOMAINS:
@@ -602,19 +643,157 @@ class LegalEngine:
             if score > best_score:
                 best_score = score
                 best = domain
+        
+        # 2. Vector-based similarity search (Hybrid enhancement)
+        try:
+            if self.vector_store is None:
+                return best, best_score
+            vector_results = self.vector_store.similarity_search_with_score(query, k=1)
+            if vector_results:
+                doc, score = vector_results[0]
+                # Lower score is better in ChromaDB (distance)
+                if score < 0.5:  # Threshold for similarity
+                    vector_match = next((d for d in DOMAINS if d['name'] == doc.metadata['name']), None)
+                    if vector_match:
+                        # Combine: Favor vector if it's very similar, otherwise keyword
+                        if score < 0.2:
+                            return vector_match, 1.0 # High confidence
+                        elif best_score < 2:
+                            return vector_match, 0.8
+        except Exception:
+            pass # Fallback to keyword match if vector search fails
+            
         return best, best_score
 
     def _kb_section_text(self, act_id):
+        """Raw dump of every section of an act (kept for compatibility).
+
+        Prefer `retrieve_sections` for query-relevant retrieval.
+        """
         if not act_id:
             return []
-        lines = []
-        for s in self._sections_by_act.get(act_id, []):
-            content = s.get("content", "")
-            lines.append(content)
-        return lines
+        return [s.get("content", "") for s in self._sections_by_act.get(act_id, [])]
 
     def _kb_act(self, act_id):
         return self._acts_by_id.get(act_id)
+
+    # --- Retrieval ---------------------------------------------------------
+    STOPWORDS = frozenset({
+        "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "is", "are",
+        "am", "was", "were", "i", "my", "me", "we", "you", "your", "he", "she",
+        "they", "them", "it", "its", "be", "been", "being", "with", "what", "how",
+        "can", "could", "do", "does", "did", "if", "at", "by", "as", "that", "this",
+        "from", "about", "please", "want", "need", "help", "there", "have", "has",
+    })
+
+    @classmethod
+    def _tokenize(cls, text):
+        if not text:
+            return []
+        tokens = re.findall(r"[a-z0-9]+", text.lower())
+        return [t for t in tokens if len(t) > 2 and t not in cls.STOPWORDS]
+
+    def _act_title(self, act_id):
+        act = self._acts_by_id.get(act_id) if act_id else None
+        return (act or {}).get("title") or act_id
+
+    def _act_url(self, act_id):
+        act = self._acts_by_id.get(act_id) if act_id else None
+        return (act or {}).get("government_link")
+
+    def _section_source(self, section):
+        act_id = section.get("act_id")
+        return {
+            "act_id": act_id,
+            "act_title": self._act_title(act_id),
+            "section_number": section.get("section_number", ""),
+            "title": section.get("title", ""),
+            "content": section.get("content", ""),
+            "punishment": section.get("punishment", ""),
+            "url": self._act_url(act_id),
+        }
+
+    def _score_sections(self, q_tokens, sections):
+        scored = []
+        for s in sections:
+            text = " ".join((
+                s.get("title", ""),
+                s.get("section_number", ""),
+                s.get("content", ""),
+                s.get("punishment", ""),
+            ))
+            s_tokens = set(self._tokenize(text))
+            if not s_tokens:
+                continue
+            overlap = len(q_tokens & s_tokens)
+            if overlap:
+                scored.append((overlap / (len(q_tokens) ** 0.5), s))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [s for _, s in scored]
+
+    def _lexical_retrieve(self, query, k, act_id=None):
+        """Token-overlap ranking over the sections KB (dependency-free).
+
+        Tries the detected domain's act first, then widens to the full KB.
+        """
+        q_tokens = set(self._tokenize(query))
+        if not q_tokens:
+            return []
+        if act_id:
+            scoped = self._score_sections(
+                q_tokens, [s for s in self._sections if s.get("act_id") == act_id]
+            )[:k]
+            if scoped:
+                return scoped
+        return self._score_sections(q_tokens, self._sections)[:k]
+
+    def _vector_retrieve(self, query, k, act_id=None):
+        """Semantic retrieval via Chroma when section embeddings exist."""
+        if self.vector_store is None:
+            return []
+        try:
+            results = self.vector_store.similarity_search_with_score(query, k=max(k * 3, 6))
+        except Exception:
+            return []
+        out = []
+        for doc, _score in results:
+            meta = getattr(doc, "metadata", {}) or {}
+            section_number = meta.get("section_number")
+            if not section_number:
+                continue  # domain-level document, not a section
+            if act_id and meta.get("act_id") != act_id:
+                continue
+            out.append({
+                "act_id": meta.get("act_id"),
+                "act_title": meta.get("act_title") or self._act_title(meta.get("act_id")),
+                "section_number": section_number,
+                "title": meta.get("title", ""),
+                "content": doc.page_content,
+                "punishment": meta.get("punishment", ""),
+                "url": meta.get("url") or self._act_url(meta.get("act_id")),
+            })
+            if len(out) >= k:
+                break
+        return out
+
+    def retrieve_sections(self, query, k=3, act_id=None):
+        """Return the most relevant statutory sections for `query`.
+
+        Uses the vector store when section-level embeddings are available,
+        otherwise falls back to lexical ranking so retrieval still works
+        without the heavy RAG dependencies installed. When there is no
+        lexical signal, falls back to the detected domain's own act.
+        """
+        self.load()
+        hits = self._vector_retrieve(query, k, act_id)
+        if hits:
+            return hits
+        lexical = self._lexical_retrieve(query, k, act_id)
+        if lexical:
+            return [self._section_source(s) for s in lexical]
+        if act_id:
+            return [self._section_source(s) for s in self._sections_by_act.get(act_id, [])[:k]]
+        return []
 
     def sanitize_links_in_response(self, response_dict: dict) -> dict:
         raw_web = response_dict.get("government_website", "")
@@ -643,7 +822,12 @@ class LegalEngine:
             return self.sanitize_links_in_response(self._generic_response(query, language))
 
         kb_act = self._kb_act(domain.get("kb_act_id")) if domain.get("kb_act_id") else None
-        kb_text = self._kb_section_text(domain.get("kb_act_id")) if domain.get("kb_act_id") else []
+        sources = self.retrieve_sections(query, k=3, act_id=domain.get("kb_act_id"))
+        kb_text = [
+            f"[{s['act_title']}, {s['section_number']}] "
+            f"{s.get('title', '')}: {s.get('content', '')}"
+            for s in sources
+        ]
 
         act_titles = list(domain.get("acts", []))
         if kb_act:
@@ -677,10 +861,11 @@ class LegalEngine:
             "government_website": government_website,
             "disclaimer": DISCLAIMER,
             "confidence_score": confidence,
+            "sources": sources,
         }
 
         try:
-            gemini = self._gemini_enhance(domain, query, language)
+            gemini = self._gemini_enhance(domain, query, language, sources)
             if gemini:
                 response.update(gemini)
         except (urllib.error.URLError, KeyError, ValueError, json.JSONDecodeError):
@@ -693,18 +878,36 @@ class LegalEngine:
         key = (settings.GEMINI_API_KEY or "").strip()
         return key.startswith("AIza") and "your_" not in key and "mock" not in key
 
-    def _gemini_enhance(self, domain, query, language="en"):
+    def _gemini_enhance(self, domain, query, language="en", sources=None):
         if not self._gemini_available():
             return None
         key = settings.GEMINI_API_KEY.strip()
+
+        context_block = ""
+        if sources:
+            context_lines = [
+                f"- {s['act_title']}, {s['section_number']} "
+                f"({s.get('title', '')}): {s.get('content', '')}"
+                for s in sources
+            ]
+            context_block = (
+                "\nRetrieved statutory context (your answer MUST be grounded in this and "
+                "must not invent laws or sections):\n" + "\n".join(context_lines) + "\n"
+            )
+
         prompt = (
-            "You are LegalSathi, an Indian legal information assistant. Using the legal domain "
-            f"'{domain['name']}' and the query '{query}', provide a JSON object with exactly "
-            "these keys: summary, applicable_law, explanation, rights, next_steps, "
-            "required_documents, government_website, confidence_score. "
+            "You are LegalSathi, an Indian legal information assistant. Answer the user's "
+            "question using ONLY the retrieved statutory context provided below. "
+            f"User query: '{query}'. Detected legal domain: '{domain['name']}'.\n"
+            f"{context_block}\n"
+            "Return a JSON object with exactly these keys: summary, applicable_law, explanation, "
+            "rights, next_steps, required_documents, government_website, confidence_score. "
             "All values must be strings (confidence_score a float 0-1). "
             "Rights, next_steps and required_documents should be newline bullets starting with "
-            "'- '. Keep it accurate, practical and cite real Indian laws. Return ONLY the JSON."
+            "'- '. Keep it accurate and practical. "
+            "CRITICAL: For every claim, cite the specific law, act and section in brackets "
+            "(e.g., [Indian Penal Code, Section 302]), drawing only on the retrieved context. "
+            "If the context does not cover something, state 'Source not found'. Return ONLY the JSON."
         )
         payload = json.dumps({
             "contents": [{"parts": [{"text": prompt}]}],
@@ -753,6 +956,7 @@ class LegalEngine:
             "government_website": "https://www.india.gov.in",
             "disclaimer": DISCLAIMER,
             "confidence_score": 0.5,
+            "sources": [],
         }
 
 

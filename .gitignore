@@ -37,3 +37,9 @@ Thumbs.db
 .idea/
 LegalSathi-AI/
 *.log
+
+# Legacy scaffold (untracked BharatToon agent, not part of LegalSathi)
+backend/app/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
